@@ -1,0 +1,76 @@
+\documentclass[]{article}
+
+\usepackage{amsmath}
+\usepackage[margin=1in]{geometry}
+
+\title{Discrete optimization}
+\author{}
+
+
+\begin{document}
+
+\tableofcontents
+
+\maketitle
+\section{Knapsack}
+\subsection{Greedy algorithms}
+Many possible implementations to solve the same problem. For knapsack in
+particular we could come up with: more valuable is better, more items is better, more value per kg is
+better.
+
+Zero guarantees that the problem is optimally solved. The problem needs to be
+easy. We can use a quick and dirty greedy algorithm to get started with a
+problem.
+
+\subsection{Modelling}
+
+How to model, in general:
+\begin{enumerate}
+  \item Select some \textbf{decision variables}, which encode the result we are interested
+        in.
+  \item Express the \textbf{constraints} in terms of the decision variables.
+  \item Declare an \textbf{objective function}, which specifies the quality of each solution.
+\end{enumerate}
+
+As a result, the optimization model we get is declarative (\textit{what}, not \textit{how}), therefore there may be multiple ways to solve it.
+
+Applying this to the knapsack problem:
+
+\begin{enumerate}
+  \item{Decision variables}:
+  \begin{itemize}
+    \item $x_i$ denotes whether item $i$ is selected.
+    \item $x_i=1$ means its selected.
+    \item $x_i=0$ means its not selected.
+  \end{itemize}
+  \item{Constraints}:
+  \begin{itemize}
+    \item selected items cannot exceed the capacity for a set of items $S$:
+          $$
+            \sum_{i \in S}w_i x_i \leq K
+          $$
+  \end{itemize}
+  \item{Objective function}: total value of the selected items:
+  $$
+    \sum_{i \in S}v_i x_i
+  $$
+\end{enumerate}
+
+This leaves us with the following model:
+
+\centering
+\def\arraystretch{4} %  1 is the default, change whatever you need
+\begin{tabular}{ll}
+  minimize   & $
+    \displaystyle\sum_{i \in S}v_i x_i
+  $              \\
+  subject to & $
+    \begin{align}
+      \sum_{i \in S}w_i x_i \leq K
+      \\
+      x_i \in \{0,1\} \ (i \in S)
+    \end{align}
+  $              \\
+\end{tabular}
+
+\end{document}
