@@ -2,3 +2,4 @@ ortools
 pandas
 matplotlib
 notebook
+ipykernel
