@@ -4,3 +4,4 @@ matplotlib
 notebook
 ipykernel
 numpy
+pyomo
