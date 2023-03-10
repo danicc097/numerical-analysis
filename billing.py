@@ -20,14 +20,15 @@ for u in range(len(user_hours)):
         for p in project_hours.keys():
             vars[u][w].append(model.NewIntVar(0, max_weekly_hours, f'u{u+1}_w{w+1}_p{p}'))
 
-# Add the constraints
+
 for u in range(len(user_hours)):
     for w in range(n_weeks):
-        model.Add(sum(vars[u][w]) == max_weekly_hours)
+        model.Add(sum(vars[u][w]) <= max_weekly_hours)
 
-    for p in project_hours.keys():
-        # model.Add(sum(vars[u][w][int(p)-1] for u in range(len(user_hours))) == project_hours[p])
-        pass
+# looks good, get all project i vars
+for p in project_hours.keys():
+    # pprint.pprint([vars[u][w][int(p)-1] for w in range(n_weeks) for u in range(len(user_hours))])
+    model.Add(sum(vars[u][w][int(p)-1] for w in range(n_weeks) for u in range(len(user_hours))) == project_hours[p])
 
 # TODO total sum for all users for each project constraint
 # for p, p_hours in project_hours.items():
