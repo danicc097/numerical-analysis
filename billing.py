@@ -44,6 +44,8 @@ for u in range(len(user_hours)):
         # see https://stackoverflow.com/questions/65500478/or-tools-how-to-set-the-value-of-a-boolvar-if-the-sum-of-some-intvars-is-great
         # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/)ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn
         # model.AddMaxEquality(user_span, [vars[u][w][int(p)-1] for p in project_hours.keys()])
+        model.Add(sum(vars[u][w]) > 0).OnlyEnforceIf(user_span)
+        model.Add(sum(vars[u][w]) == 0).OnlyEnforceIf(user_span.Not())
         spans[u].append(user_span)
         old_spans.append(user_span)
 
@@ -65,7 +67,8 @@ if status == cp_model.MODEL_INVALID:
 # pprint.pprint(vars)
 print(f"Project billing hours: {project_hours}")
 
-print([solver.Value(span) for span in flattened_spans])
+# can access by var name
+print([solver.Value(span) for span in list(itertools.chain(*spans))])
 
 if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
     for u in range(len(user_hours)):
@@ -77,7 +80,7 @@ if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
                 month_accum+=hours
                 print(f"\tWeek {w+1}: {hours:<3}h on project {p:<4} Span bool={solver.Value(spans[u][w])}")
         print(f"Total hours for user {u+1}: {month_accum}")
-        print(f"Total spans for user {u+1}: {sum(solver.Value(flattened_spans[u*n_weeks+w]) for w in range(n_weeks))}")
+        print(f"Total spans for user {u+1}: {sum(solver.Value(spans[u][w]) for w in range(n_weeks))}")
         # ^ sum of spans[...]*vars[...]
         print("----")
     print(f"Total span for all users: {solver.ObjectiveValue():f}")
