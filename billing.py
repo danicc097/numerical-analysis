@@ -22,14 +22,16 @@ for u in range(len(user_hours)):
 
 # Add the constraints
 for u in range(len(user_hours)):
-    # for w in range(n_weeks):
-    #     model.Add(sum(vars[u][w]) == sum(project_hours.values()))
+    for w in range(n_weeks):
+        model.Add(sum(vars[u][w]) == max_weekly_hours)
 
     for p in project_hours.keys():
         # model.Add(sum(vars[u][w][int(p)-1] for u in range(len(user_hours))) == project_hours[p])
         pass
 
-    model.Add(sum(vars[u][w]) == max_weekly_hours)
+# TODO total sum for all users for each project constraint
+# for p, p_hours in project_hours.items():
+#     model.Add(sum(sum(weekly_hours) for users in vars for weekly_hours in users ) == p_hours)
 
 # Define the objective
 spans = []
@@ -55,11 +57,15 @@ if status == cp_model.MODEL_INVALID:
 if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
     for u in range(len(user_hours)):
         print(f"user {u+1}:")
+        month_accum = 0
         for w in range(n_weeks):
             for p in project_hours.keys():
                 hours = solver.Value(vars[u][w][int(p)-1])
-                print(f"Week {w+1}: {hours}h on project {p}")
-        print(f"Total span for user {u+1}: {solver.Value(spans[u*n_weeks]):f}")
+                month_accum+=hours
+                print(f"\tWeek {w+1}: {hours:<3}h on project {p:<4} Span bool={solver.Value(spans[u*n_weeks+w])}")
+        print(f"Total hours for user {u+1}: {month_accum}")
+        print(f"Total spans for user {u+1}: {spans[u*n_weeks:u*n_weeks+n_weeks]}")
+        # ^ sum of spans[...]*vars[...]
         print("----")
     print(f"Total span for all users: {solver.ObjectiveValue():f}")
 else:
