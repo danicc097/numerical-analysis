@@ -1,9 +1,14 @@
 import itertools
 import pprint
 from ortools.sat.python import cp_model
+from collections.abc import Iterable
 
-def flatten(l):
-    return [item for sublist in l for item in sublist]
+def flatten(xs):
+    for x in xs:
+        if isinstance(x, Iterable) and not isinstance(x, (str, bytes)):
+            yield from flatten(x)
+        else:
+            yield x
 
 # Define the input parameters
 n_weeks = 4
@@ -39,19 +44,19 @@ old_spans = []
 for u in range(len(user_hours)):
     spans.append([])
     for w in range(n_weeks):
-        user_span = model.NewBoolVar(f'span_u{u+1}_w{w+1}')
         # TODO bool var true based on project hour allocation if allocation > 0
         # see https://stackoverflow.com/questions/65500478/or-tools-how-to-set-the-value-of-a-boolvar-if-the-sum-of-some-intvars-is-great
         # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/)ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn
         # model.AddMaxEquality(user_span, [vars[u][w][int(p)-1] for p in project_hours.keys()])
-        model.Add(sum(vars[u][w]) > 0).OnlyEnforceIf(user_span)
-        model.Add(sum(vars[u][w]) == 0).OnlyEnforceIf(user_span.Not())
-        spans[u].append(user_span)
-        old_spans.append(user_span)
+        spans[u].append([])
+        for p in project_hours.keys():
+            user_span = model.NewBoolVar(f'span_u{u+1}_w{w+1}_p{p}')
+            model.Add(vars[u][w][int(p)-1] > 0).OnlyEnforceIf(user_span)
+            model.Add(vars[u][w][int(p)-1] == 0).OnlyEnforceIf(user_span.Not())
+            spans[u][w].append(user_span)
+            old_spans.append(user_span)
 
-flattened_spans = list(itertools.chain(*spans))
-print(flattened_spans)
-print(old_spans)
+flattened_spans = flatten(spans)
 model.Minimize(sum(flattened_spans)) #
 
 # Solve the model
@@ -63,12 +68,7 @@ if status == cp_model.INFEASIBLE:
 if status == cp_model.MODEL_INVALID:
     raise Exception("MODEL_INVALID")
 
-# pprint.pprint(spans)
-# pprint.pprint(vars)
 print(f"Project billing hours: {project_hours}")
-
-# can access by var name
-print([solver.Value(span) for span in list(itertools.chain(*spans))])
 
 if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
     for u in range(len(user_hours)):
@@ -78,9 +78,9 @@ if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
             for p in project_hours.keys():
                 hours = solver.Value(vars[u][w][int(p)-1])
                 month_accum+=hours
-                print(f"\tWeek {w+1}: {hours:<3}h on project {p:<4} Span bool={solver.Value(spans[u][w])}")
+                print(f"\tWeek {w+1}: {hours:<3}h on project {p:<4} Span bool={solver.Value(spans[u][w][int(p)-1])}")
         print(f"Total hours for user {u+1}: {month_accum}")
-        print(f"Total spans for user {u+1}: {sum(solver.Value(spans[u][w]) for w in range(n_weeks))}")
+        print(f"Total spans for user {u+1}: {sum(solver.Value(span) for span in flatten(spans[u]))}")
         # ^ sum of spans[...]*vars[...]
         print("----")
     print(f"Total span for all users: {solver.ObjectiveValue():f}")
