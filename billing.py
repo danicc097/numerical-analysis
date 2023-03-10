@@ -12,7 +12,7 @@ def flatten(xs):
 
 # Define the input parameters
 n_weeks = 4
-project_hours = {'1': 140, '2': 20, '3': 310}
+project_hours = {'1': 140, '2': 20, '3': 300, '4':10} # , '4':10
 hours_per_day = 8
 max_weekly_hours = 40
 
@@ -21,6 +21,15 @@ model = cp_model.CpModel()
 
 # Create the decision variables
 user_hours = [160,160,150] # users [1,2,3]
+
+
+print(f"Total user hours: {sum(user_hours)}")
+print(f"Total billable project hours: {sum(project_hours.values())}")
+
+if sum(user_hours) != sum(project_hours.values()):
+    print("Cannot have project billing hours different than total user billable hours")
+    exit(1)
+
 vars = []
 for u in range(len(user_hours)):
     vars.append([])
@@ -34,18 +43,20 @@ for u in range(len(user_hours)):
     for w in range(n_weeks):
         model.Add(sum(vars[u][w]) <= max_weekly_hours)
 
+    # TODO limit sum of user hours in a month
+    model.Add(sum(sum(vars[u][w]) for w in range(n_weeks)) == user_hours[u])
+
 # looks good, get all project i vars
 for p in project_hours.keys():
     # pprint.pprint([vars[u][w][int(p)-1] for w in range(n_weeks) for u in range(len(user_hours))])
     model.Add(sum(vars[u][w][int(p)-1] for w in range(n_weeks) for u in range(len(user_hours))) == project_hours[p])
+
 
 spans = []
 old_spans = []
 for u in range(len(user_hours)):
     spans.append([])
     for w in range(n_weeks):
-        # TODO bool var true based on project hour allocation if allocation > 0
-        # see https://stackoverflow.com/questions/65500478/or-tools-how-to-set-the-value-of-a-boolvar-if-the-sum-of-some-intvars-is-great
         # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/)ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn
         # model.AddMaxEquality(user_span, [vars[u][w][int(p)-1] for p in project_hours.keys()])
         spans[u].append([])
@@ -70,7 +81,7 @@ if status == cp_model.MODEL_INVALID:
 
 print(f"Project billing hours: {project_hours}")
 
-if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+if status == cp_model.OPTIMAL:
     for u in range(len(user_hours)):
         print(f"user {u+1}:")
         month_accum = 0
@@ -83,6 +94,10 @@ if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
         print(f"Total spans for user {u+1}: {sum(solver.Value(span) for span in flatten(spans[u]))}")
         # ^ sum of spans[...]*vars[...]
         print("----")
-    print(f"Total span for all users: {solver.ObjectiveValue():f}")
-else:
-    print("No optimal or feasible solution found.")
+    print(f"Total spans for all users: {int(solver.ObjectiveValue())}")
+elif status == cp_model.FEASIBLE:
+    print("""Feasible solution found. TODO handle""")
+
+print('\nAdvanced usage:')
+print('Problem solved in %f milliseconds' % solver.WallTime())
+print(f"Solution info: {solver.SolutionInfo()}")
