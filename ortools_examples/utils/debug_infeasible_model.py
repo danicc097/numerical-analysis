@@ -4,6 +4,12 @@ from ortools.sat.python import cp_model
 Utilities from ortools to debug an infeasible model.
 
 See https://github.com/google/or-tools/issues/973
+
+
+There's also an example showcasing the same debug procedure:
+
+    https://github.com/google/or-tools/blob/master/ortools/sat/samples/assumptions_sample_sat.py
+
 """
 
 model = cp_model.CpModel()

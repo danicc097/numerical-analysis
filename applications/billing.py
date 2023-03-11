@@ -1,3 +1,49 @@
+"""
+
+Redistribute total hours to bill for n total employees from all teams in a project so that individual
+employee time entries (forcefully manual) are minimized.
+
+Inputs:
+  - Employee monthly billable hours to report (excluding holidays, etc.) for every
+    client. Extracted from external time tracking systems, it would be nonsensical to input as is in
+    the official time reporting software.
+
+    >For proper
+    >optimization, knowing each non-billable hours count and day of the month for every
+    >employee would be necessary. In this example all non-billable employee hours are ignored.
+  - A month can be composed of either 4 or 5 weeks. Selectable on demand.
+
+Constraints:
+  - 8 hours/day for reporting application
+  - 40 hour/week maximum span of reported project hours.
+
+
+The objective is to minimize total created spans by all employees.
+
+Extras:
+    - Minimize set of projects a employee allocates to in a month, meaning less cognitive overhead.
+
+Example:
+
+    4 week month, 3 employees with 160,160,150 respective billable hours to distribute between
+    projects:
+
+    - 1: 140h
+    - 2: 20h
+    - 3: 310h
+
+    should output something like:
+
+    |        | Week 1 | Week 2 | Week 3 |   Week 4    | Spans |
+    | ------ | ------ | ------ | ------ | ----------- | ----- |
+    | user 1 | 40#3   | 40#3   | 40#3   | 40#3        | 4     |
+    | user 3 | 40#3   | 40#3   | 40#3   | 30#3        | 4     |
+    | user 2 | 40#1   | 40#1   | 40#1   | 20#1 + 20#2 | 5     |
+    * {hours}#{project}
+
+"""
+
+
 import itertools
 import pprint
 import time
@@ -108,9 +154,11 @@ for e in employee_hours.keys():
             model.Add(sum(vars[e][p]) <= max_weekly_hours)
 
     # upper limit sum of employee hours in a month for all projects
+    print(e, sum(sum(vars[e][p]) for p in project_hours.keys()))
     model.Add(sum(sum(vars[e][p]) for p in project_hours.keys()) <= employee_hours[e])
 
 for p in project_hours.keys():
+    print(p, sum(sum(vars[e][p]) for e in employee_hours.keys()))
     # all project billing hours must be allocated in the end
     model.Add(sum(sum(vars[e][p]) for e in employee_hours.keys()) == project_hours[p])
 
