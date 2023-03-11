@@ -150,15 +150,13 @@ pprint.pprint(vars)
 #                          var_u_Alice_p_Project 4_w_3(0..40),
 #                          var_u_Alice_p_Project 4_w_4(0..40)]},
 for e in employee_hours.keys():
-    for p in project_hours.keys():
-            model.Add(sum(vars[e][p]) <= max_weekly_hours)
+    for w in range(n_weeks):
+        model.Add(sum(vars[e][p][w] for p in project_hours.keys()) <= max_weekly_hours)
 
     # upper limit sum of employee hours in a month for all projects
-    print(e, sum(sum(vars[e][p]) for p in project_hours.keys()))
     model.Add(sum(sum(vars[e][p]) for p in project_hours.keys()) <= employee_hours[e])
 
 for p in project_hours.keys():
-    print(p, sum(sum(vars[e][p]) for e in employee_hours.keys()))
     # all project billing hours must be allocated in the end
     model.Add(sum(sum(vars[e][p]) for e in employee_hours.keys()) == project_hours[p])
 
