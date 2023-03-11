@@ -1,5 +1,9 @@
 {
   "python.linting.mypyEnabled": true,
   "python.linting.enabled": true,
-  "python.linting.mypyPath": ".venv/Scripts/mypy.exe"
+  "python.linting.mypyPath": ".venv/Scripts/mypy.exe",
+  "python.formatting.blackPath": ".venv/Scripts/black.exe",
+  "python.formatting.provider": "black",
+  "python.formatting.blackArgs": [],
+  "python.defaultInterpreterPath": ".venv/Scripts/python.exe",
 }

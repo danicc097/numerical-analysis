@@ -44,14 +44,20 @@ Example:
 """
 
 
+import copy
+import dataclasses
 import itertools
 import pprint
 import time
-from typing import Dict, List
+from typing import Any, Dict, List, Union, cast
+import typing
 from ortools.sat.python import cp_model
+from xlsxwriter import Workbook
 
 from collections.abc import Iterable
 import pandas as pd
+import polars as pl
+
 
 def flatten(xs):
     for x in xs:
@@ -59,6 +65,7 @@ def flatten(xs):
             yield from flatten(x)
         else:
             yield x
+
 
 def flatten_dict(a):
     lst = []
@@ -74,156 +81,195 @@ def flatten_dict(a):
 
 Employee = str
 Project = str
-Vars = Dict[Employee,Dict[Project,List[cp_model.IntVar]]]
-Spans = Dict[Employee,Dict[Project,List[cp_model.IntVar]]]
+Vars = Dict[Employee, Dict[Project, List[cp_model.IntVar]]]
+Spans = Dict[Employee, Dict[Project, List[cp_model.IntVar]]]
+Results = Dict[Employee, Dict[Project, Any]]
+ProjectHours = Dict[Project, int]
+EmployeeHours = Dict[Employee, int]
 
 n_weeks = 4
-project_hours: Dict[Project, int] = {'Project 1': 140, 'Project 2': 20, 'Project 3': 300, 'Project 4':10}
-employee_hours: Dict[Employee, int] = {'Martin': 160, 'Jane': 160, 'Bob': 150, 'Alice':10}
+project_hours: ProjectHours = {
+    "Project 1": 140,
+    "Project 2": 20,
+    "Project 3": 300,
+    "Project 4": 10,
+}
+employee_hours: EmployeeHours = {"Martin": 160, "Jane": 160, "Bob": 150, "Alice": 10}
 max_weekly_hours = 40
 
-total_employee_hours = sum(employee_hours.values())
-total_project_hours = sum(project_hours.values())
-print(f"Total employee hours: {total_employee_hours}")
-print(f"Total billable project hours: {total_project_hours}")
 
-if total_employee_hours < total_project_hours:
-    print("Cannot have project billing hours higher than total employee billable hours")
-    exit(1)
-elif total_employee_hours > total_project_hours:
-    print("####")
-    print("#### Unallocated billable hours:", total_employee_hours - total_project_hours)
-    print("####")
+@dataclasses.dataclass
+class EmployeeReporting:
+    df: pd.DataFrame
+    spans: int
+    unallocated_hours: Dict[Employee, int]
 
 
-# Initialize the CP-SAT model
-model = cp_model.CpModel()
+def minimize_employee_reporting(
+    n_weeks=4,
+    project_hours: ProjectHours = {},
+    employee_hours: EmployeeHours = {},
+    max_weekly_hours=40,
+) -> EmployeeReporting:
+    total_employee_hours = sum(employee_hours.values())
+    total_project_hours = sum(project_hours.values())
+    print(f"Total employee hours: {total_employee_hours}")
+    print(f"Total billable project hours: {total_project_hours}")
 
-class HourReportingPrinter(cp_model.CpSolverSolutionCallback):
-    """Print intermediate solutions."""
+    if total_employee_hours < total_project_hours:
+        print("Cannot have project billing hours higher than total employee billable hours")
+        exit(1)
+    elif total_employee_hours > total_project_hours:
+        print("####")
+        print(
+            "#### Total unallocated employee billable hours:",
+            total_employee_hours - total_project_hours,
+        )
+        print("####")
 
-    def __init__(self, dummy = None):
-        cp_model.CpSolverSolutionCallback.__init__(self)
-        self.__solution_count = 0
-        self.__start_time = time.time()
-        self.__dummy = dummy
+    # Initialize the CP-SAT model
+    model = cp_model.CpModel()
 
-    def on_solution_callback(self):
-        current_time = time.time()
-        objective = self.ObjectiveValue()
-        print("Solution %i, time = %f s, objective = %i" %
-              (self.__solution_count, current_time - self.__start_time,
-               objective))
-        self.__solution_count += 1
+    class HourReportingPrinter(cp_model.CpSolverSolutionCallback):
+        """Print intermediate solutions."""
+
+        def __init__(self, dummy=None):
+            cp_model.CpSolverSolutionCallback.__init__(self)
+            self.__solution_count = 0
+            self.__start_time = time.time()
+            self.__dummy = dummy
+
+        def on_solution_callback(self):
+            current_time = time.time()
+            objective = self.ObjectiveValue()
+            print(
+                "Solution %i, time = %f s, objective = %i"
+                % (self.__solution_count, current_time - self.__start_time, objective)
+            )
+            self.__solution_count += 1
 
         # show useful info...
 
-    def num_solutions(self):
-        return self.__solution_count
+        def num_solutions(self):
+            return self.__solution_count
 
+    vars: Vars = dict()
 
-vars: Vars = dict()
-
-for e in employee_hours.keys():
-    vars[e] = {}
-    for p in project_hours.keys():
-        vars[e][p] = []
-        for w in range(n_weeks):
-            vars[e][p].append(model.NewIntVar(0, max_weekly_hours, f'var_u_{e}_p_{p}_w_{w+1}'))
-pprint.pprint(vars)
-
-
-# {'Alice': {'Project 1': [var_u_Alice_p_Project 1_w_1(0..40),
-#                          var_u_Alice_p_Project 1_w_2(0..40),
-#                          var_u_Alice_p_Project 1_w_3(0..40),
-#                          var_u_Alice_p_Project 1_w_4(0..40)],
-#            'Project 2': [var_u_Alice_p_Project 2_w_1(0..40),
-#                          var_u_Alice_p_Project 2_w_2(0..40),
-#                          var_u_Alice_p_Project 2_w_3(0..40),
-#                          var_u_Alice_p_Project 2_w_4(0..40)],
-#            'Project 3': [var_u_Alice_p_Project 3_w_1(0..40),
-#                          var_u_Alice_p_Project 3_w_2(0..40),
-#                          var_u_Alice_p_Project 3_w_3(0..40),
-#                          var_u_Alice_p_Project 3_w_4(0..40)],
-#            'Project 4': [var_u_Alice_p_Project 4_w_1(0..40),
-#                          var_u_Alice_p_Project 4_w_2(0..40),
-#                          var_u_Alice_p_Project 4_w_3(0..40),
-#                          var_u_Alice_p_Project 4_w_4(0..40)]},
-for e in employee_hours.keys():
-    for w in range(n_weeks):
-        model.Add(sum(vars[e][p][w] for p in project_hours.keys()) <= max_weekly_hours)
-
-    # upper limit sum of employee hours in a month for all projects
-    model.Add(sum(sum(vars[e][p]) for p in project_hours.keys()) <= employee_hours[e])
-
-for p in project_hours.keys():
-    # all project billing hours must be allocated in the end
-    model.Add(sum(sum(vars[e][p]) for e in employee_hours.keys()) == project_hours[p])
-
-spans: Spans = {}
-for e in employee_hours.keys():
-    spans[e] = {}
-    for p in project_hours.keys():
-        spans[e][p] = []
-        for w in range(n_weeks):
-            # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn)
-            employee_span = model.NewBoolVar(f'span_u_{e}_p_{p}_w_{w+1}')
-            model.Add(vars[e][p][w] > 0).OnlyEnforceIf(employee_span)
-            model.Add(vars[e][p][w] == 0).OnlyEnforceIf(employee_span.Not())
-            spans[e][p].append(employee_span)
-
-pprint.pprint(spans)
-pprint.pprint(vars)
-
-flattened_spans = flatten(flatten(j) for i in spans.values() for j in i.values())
-model.Minimize(sum(flattened_spans))
-# TODO minimize number of different projects per user (addition with less weight than span)
-
-solver = cp_model.CpSolver()
-status = solver.Solve(model, HourReportingPrinter())
-
-if status == cp_model.INFEASIBLE:
-    raise Exception("INFEASIBLE")
-if status == cp_model.MODEL_INVALID:
-    raise Exception("MODEL_INVALID")
-
-print(f"Project billing hours: {project_hours}")
-print(f"Employee hours: {employee_hours}")
-print("-------------------------------------------")
-
-if status == cp_model.OPTIMAL:
     for e in employee_hours.keys():
-        print(f"Employee {e}:")
-        month_accum = 0
+        vars[e] = {}
+        for p in project_hours.keys():
+            vars[e][p] = []
+            for w in range(n_weeks):
+                vars[e][p].append(model.NewIntVar(0, max_weekly_hours, f"var_u_{e}_p_{p}_w_{w+1}"))
+
+    for e in employee_hours.keys():
         for w in range(n_weeks):
-            for p in project_hours.keys():
-                hours = solver.Value(vars[e][p][w])
-                month_accum+=hours
-                print(f"\tWeek {w+1}: {hours:<3}h on project {p:<20} Span bool={solver.Value(spans[e][p][w])}")
-        print("")
-        print(f"\tAllocated hours: {month_accum}")
-        print(f"\tUnallocated hours: {employee_hours[e] - month_accum}")
-        print(f"\tTotal spans: {sum(solver.Value(span) for span in flatten_dict(spans))}")
-        # ^ sum of spans[...]*vars[...]
-        print("----")
-    print(f"Total spans for all employees: {int(solver.ObjectiveValue())}")
+            model.Add(sum(vars[e][p][w] for p in project_hours.keys()) <= max_weekly_hours)
 
-elif status == cp_model.FEASIBLE:
-    print("""Feasible solution found. TODO handle""")
+        # upper limit sum of employee hours in a month for all projects
+        model.Add(sum(sum(vars[e][p]) for p in project_hours.keys()) <= employee_hours[e])
 
-print('Statistics')
-print('  - conflicts : %i' % solver.NumConflicts())
-print('  - branches  : %i' % solver.NumBranches())
-print('  - wall time : %f s' % solver.WallTime())
+    for p in project_hours.keys():
+        # all project billing hours must be allocated in the end
+        model.Add(sum(sum(vars[e][p]) for e in employee_hours.keys()) == project_hours[p])
+
+    spans: Spans = {}
+    for e in employee_hours.keys():
+        spans[e] = {}
+        for p in project_hours.keys():
+            spans[e][p] = []
+            for w in range(n_weeks):
+                # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn)
+                employee_span = model.NewBoolVar(f"span_u_{e}_p_{p}_w_{w+1}")
+                model.Add(vars[e][p][w] > 0).OnlyEnforceIf(employee_span)
+                model.Add(vars[e][p][w] == 0).OnlyEnforceIf(employee_span.Not())
+                spans[e][p].append(employee_span)
+
+    flattened_spans = flatten(flatten(j) for i in spans.values() for j in i.values())
+    model.Minimize(sum(flattened_spans))
+    # TODO minimize number of different projects per user (addition with less weight than span)
+    # TODO restrict arbitrary users to allow reporting only to specific project(s)
+
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model, HourReportingPrinter())
+
+    if status == cp_model.INFEASIBLE:
+        raise Exception("INFEASIBLE")
+    if status == cp_model.MODEL_INVALID:
+        raise Exception("MODEL_INVALID")
+
+    print(f"Project billing hours: {project_hours}")
+    print(f"Employee hours: {employee_hours}")
+    print("-------------------------------------------")
+
+    total_spans = int(solver.ObjectiveValue())
+
+    if status == cp_model.OPTIMAL:
+        for e in employee_hours.keys():
+            print(f"Employee {e}:")
+            month_accum = 0
+            for w in range(n_weeks):
+                for p in project_hours.keys():
+                    hours = solver.Value(vars[e][p][w])
+                    month_accum += hours
+                    print(f"\tWeek {w+1}: {hours:<3}h on project {p:<20} Span bool={solver.Value(spans[e][p][w])}")
+            print("")
+            print(f"\tAllocated hours: {month_accum}")
+            print(f"\tUnallocated hours: {employee_hours[e] - month_accum}")
+            print(f"\tTotal spans: {sum(solver.Value(span) for span in flatten_dict(spans))}")
+            # ^ sum of spans[...]*vars[...]
+            print("----")
+        print(f"Total spans for all employees: {total_spans}")
+
+    elif status == cp_model.FEASIBLE:
+        print("""Feasible solution found. TODO handle""")
+
+    print("Statistics")
+    print("  - conflicts : %i" % solver.NumConflicts())
+    print("  - branches  : %i" % solver.NumBranches())
+    print("  - wall time : %f s" % solver.WallTime())
+
+    results: Results = copy.deepcopy(vars)
+    unallocated_hours = dict()
+    for e, _projects in results.items():
+        for p in _projects.keys():
+            results[e][p] = sum(solver.Value(results[e][p][w]) for w in range(n_weeks))
+        e_unallocated_hours = abs(sum(monthly_hours for monthly_hours in results[e].values()) - employee_hours[e])
+        if e_unallocated_hours > 0:
+            unallocated_hours[e] = e_unallocated_hours
+    df = pd.DataFrame(results)
+
+    xls = "billing.xlsx"
+    print(f"\nSaving results to {xls}...")
+    df.to_excel(xls)
+
+    return EmployeeReporting(
+        df=df,
+        spans=total_spans,
+        unallocated_hours=unallocated_hours,
+    )
+
+
+employee_reporting = minimize_employee_reporting(
+    project_hours=project_hours,
+    employee_hours=employee_hours,
+    max_weekly_hours=max_weekly_hours,
+    n_weeks=n_weeks,
+)
+
 
 project_cols = project_hours.keys()
-employee_cols = employee_hours.keys()
-df = pd.DataFrame(columns=project_cols, index=employee_cols)
+employee_rows = employee_hours.keys()
 
-for employee, projects in vars.items():
-    for project, weeks in projects.items():
-        df.loc[employee, project] = sum(solver.Value(var) for var in weeks) or 0
-    # print(df.loc[employee])
+# employee_hours_df = employee_reporting.df.sum(0)
+# projects_hours_df = employee_reporting.df.sum(1)
+# for project in project_cols:
+#     print(f"{project}: {projects_hours_df.loc[project]}")
+# for employee in employee_rows:
+#     print(f"{employee}: {employee_hours_df.loc[employee]}")
 
-print(df)
-df.to_excel("billing.xlsx")
+# polars
+# with Workbook("billing.xlsx") as wb:
+#     employee_reporting.df.write_excel(
+#         workbook = wb,
+#       worksheet = "data",)
