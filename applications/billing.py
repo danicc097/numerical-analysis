@@ -1,6 +1,7 @@
 import itertools
 import pprint
 import time
+from typing import Dict, List
 from ortools.sat.python import cp_model
 from collections.abc import Iterable
 
@@ -11,13 +12,16 @@ def flatten(xs):
         else:
             yield x
 
+Employee = str
+Project = str
+Vars = Dict[Employee,List[Dict[Project,int]]]
+
 n_weeks = 4
-project_hours = {'1': 140, '2': 20, '3': 300, '4':10}
-# TODO also dict
-employee_hours = [160,160,150,160,150,160,150,160,150,160,150] # employees [1,2,3]
+project_hours: Dict[Project, int] = {'Project 1': 140, 'Project 2': 20, 'Project 3': 300, 'Project 4':10}
+employee_hours: Dict[Employee, int] = {'Martin': 160, 'Jane': 160, 'Bob': 150, 'Alice':10}
 max_weekly_hours = 40
 
-total_employee_hours = sum(employee_hours)
+total_employee_hours = sum(employee_hours.values())
 total_project_hours = sum(project_hours.values())
 print(f"Total employee hours: {total_employee_hours}")
 print(f"Total billable project hours: {total_project_hours}")
@@ -56,43 +60,46 @@ class HourReportingPrinter(cp_model.CpSolverSolutionCallback):
     def num_solutions(self):
         return self.__solution_count
 
-vars = []
-for u in range(len(employee_hours)):
-    vars.append([])
+
+vars: Vars = dict()
+
+for u in employee_hours.keys():
+    vars[u] = []
     for w in range(n_weeks):
-        vars[u].append([])
+        vars[u].append(dict())
         for p in project_hours.keys():
-            vars[u][w].append(model.NewIntVar(0, max_weekly_hours, f'u{u+1}_w{w+1}_p{p}'))
+            vars[u][w][p] = model.NewIntVar(0, max_weekly_hours, f'var_u_{u}_w_{w+1}_p_{p}')
 
 
-for u in range(len(employee_hours)):
+for u in employee_hours.keys():
     for w in range(n_weeks):
-        model.Add(sum(vars[u][w]) <= max_weekly_hours)
+        model.Add(sum(vars[u][w].values()) <= max_weekly_hours)
 
     # limit sum of employee hours in a month
-    model.Add(sum(sum(vars[u][w]) for w in range(n_weeks)) <= employee_hours[u])
+    model.Add(sum(sum(vars[u][w].values()) for w in range(n_weeks)) <= employee_hours[u])
 
 for p in project_hours.keys():
     # restrict
-    model.Add(sum(vars[u][w][int(p)-1] for w in range(n_weeks) for u in range(len(employee_hours))) == project_hours[p])
+    model.Add(sum(vars[u][w][p] for w in range(n_weeks) for u in employee_hours.keys()) == project_hours[p])
 
 
-spans = []
-old_spans = []
-for u in range(len(employee_hours)):
-    spans.append([])
+spans = {}
+for u in employee_hours.keys():
+    spans[u] = []
     for w in range(n_weeks):
         # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/)ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn
-        # model.AddMaxEquality(employee_span, [vars[u][w][int(p)-1] for p in project_hours.keys()])
-        spans[u].append([])
+        # model.AddMaxEquality(employee_span, [vars[u][w][p] for p in project_hours.keys()])
+        spans[u].append(dict())
         for p in project_hours.keys():
-            employee_span = model.NewBoolVar(f'span_u{u+1}_w{w+1}_p{p}')
-            model.Add(vars[u][w][int(p)-1] > 0).OnlyEnforceIf(employee_span)
-            model.Add(vars[u][w][int(p)-1] == 0).OnlyEnforceIf(employee_span.Not())
-            spans[u][w].append(employee_span)
-            old_spans.append(employee_span)
+            employee_span = model.NewBoolVar(f'span_u_{u}_w_{w}_p_{p}')
+            model.Add(vars[u][w][p] > 0).OnlyEnforceIf(employee_span)
+            model.Add(vars[u][w][p] == 0).OnlyEnforceIf(employee_span.Not())
+            spans[u][w][p] = employee_span
 
-flattened_spans = flatten(spans)
+pprint.pprint(spans)
+pprint.pprint(vars)
+
+flattened_spans = flatten(flatten(j.values()) for i in spans.values() for j in i)
 model.Minimize(sum(flattened_spans)) #
 
 # Solve the model
@@ -105,20 +112,22 @@ if status == cp_model.MODEL_INVALID:
     raise Exception("MODEL_INVALID")
 
 print(f"Project billing hours: {project_hours}")
+print(f"Employee hours: {employee_hours}")
+print(f"-------------------------------------------")
 
 if status == cp_model.OPTIMAL:
-    for u in range(len(employee_hours)):
-        print(f"Employee {u+1}:")
+    for u in employee_hours.keys():
+        print(f"Employee {u}:")
         month_accum = 0
         for w in range(n_weeks):
             for p in project_hours.keys():
-                hours = solver.Value(vars[u][w][int(p)-1])
+                hours = solver.Value(vars[u][w][p])
                 month_accum+=hours
-                print(f"\tWeek {w+1}: {hours:<3}h on project {p:<4} Span bool={solver.Value(spans[u][w][int(p)-1])}")
+                print(f"\tWeek {w+1}: {hours:<3}h on project {p:<20} Span bool={solver.Value(spans[u][w][p])}")
         print("")
         print(f"\tAllocated hours: {month_accum}")
         print(f"\tUnallocated hours: {employee_hours[u] - month_accum}")
-        print(f"\tTotal spans: {sum(solver.Value(span) for span in flatten(spans[u]))}")
+        print(f"\tTotal spans: {sum(solver.Value(span) for span in spans[u][w].values())}")
         # ^ sum of spans[...]*vars[...]
         print("----")
     print(f"Total spans for all employees: {int(solver.ObjectiveValue())}")

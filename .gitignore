@@ -2,3 +2,5 @@
 /*.pdf
 build
 indent.log
+.pytest_cache
+__pycache__
