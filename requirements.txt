@@ -6,3 +6,4 @@ ipykernel
 numpy
 pyomo
 pytest
+openpyxl

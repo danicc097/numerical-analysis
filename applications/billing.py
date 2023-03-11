@@ -5,6 +5,7 @@ from typing import Dict, List
 from ortools.sat.python import cp_model
 
 from collections.abc import Iterable
+import pandas as pd
 
 def flatten(xs):
     for x in xs:
@@ -140,3 +141,16 @@ print('Statistics')
 print('  - conflicts : %i' % solver.NumConflicts())
 print('  - branches  : %i' % solver.NumBranches())
 print('  - wall time : %f s' % solver.WallTime())
+
+projects = project_hours.keys()
+employees = employee_hours.keys()
+df = pd.DataFrame(columns=projects, index=employees)
+
+for employee, weeks in vars.items():
+    for week, data in enumerate(weeks, start=1):
+        for project, var in data.items():
+            col = f'{project} (Week {week})'
+            df.loc[employee, project] = solver.Value(var)
+            df.rename(columns={project: col}, inplace=True)
+
+df.to_excel("billing.xlsx")
