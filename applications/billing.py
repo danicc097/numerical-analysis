@@ -89,8 +89,7 @@ spans: Spans = {}
 for u in employee_hours.keys():
     spans[u] = []
     for w in range(n_weeks):
-        # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/)ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn
-        # model.AddMaxEquality(employee_span, [vars[u][w][p] for p in project_hours.keys()])
+        # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn)
         spans[u].append(dict())
         for p in project_hours.keys():
             employee_span = model.NewBoolVar(f'span_u_{u}_w_{w}_p_{p}')
@@ -103,8 +102,8 @@ pprint.pprint(vars)
 
 flattened_spans = flatten(flatten(j.values()) for i in spans.values() for j in i)
 model.Minimize(sum(flattened_spans))
+# TODO minimize number of different projects per user (addition with less weight than span)
 
-# Solve the model
 solver = cp_model.CpSolver()
 status = solver.Solve(model, HourReportingPrinter())
 
