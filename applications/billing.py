@@ -239,6 +239,9 @@ def minimize_employee_reporting(
             unallocated_hours[e] = e_unallocated_hours
     df = pd.DataFrame(results)
 
+    print("\nUnallocated employee billable hours:")
+    [print("{:<25} {:<10}".format(e, f"{h}h")) for e, h in unallocated_hours.items()]
+
     xls = "billing.xlsx"
     print(f"\nSaving results to {xls}...")
     df.to_excel(xls)
