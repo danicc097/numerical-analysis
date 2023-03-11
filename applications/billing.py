@@ -3,6 +3,7 @@ import pprint
 import time
 from typing import Dict, List
 from ortools.sat.python import cp_model
+
 from collections.abc import Iterable
 
 def flatten(xs):
@@ -14,7 +15,8 @@ def flatten(xs):
 
 Employee = str
 Project = str
-Vars = Dict[Employee,List[Dict[Project,int]]]
+Vars = Dict[Employee,List[Dict[Project,cp_model.IntVar]]]
+Spans = Dict[Employee,List[Dict[Project,cp_model.IntVar]]]
 
 n_weeks = 4
 project_hours: Dict[Project, int] = {'Project 1': 140, 'Project 2': 20, 'Project 3': 300, 'Project 4':10}
@@ -83,7 +85,7 @@ for p in project_hours.keys():
     model.Add(sum(vars[u][w][p] for w in range(n_weeks) for u in employee_hours.keys()) == project_hours[p])
 
 
-spans = {}
+spans: Spans = {}
 for u in employee_hours.keys():
     spans[u] = []
     for w in range(n_weeks):
@@ -100,7 +102,7 @@ pprint.pprint(spans)
 pprint.pprint(vars)
 
 flattened_spans = flatten(flatten(j.values()) for i in spans.values() for j in i)
-model.Minimize(sum(flattened_spans)) #
+model.Minimize(sum(flattened_spans))
 
 # Solve the model
 solver = cp_model.CpSolver()
@@ -113,7 +115,7 @@ if status == cp_model.MODEL_INVALID:
 
 print(f"Project billing hours: {project_hours}")
 print(f"Employee hours: {employee_hours}")
-print(f"-------------------------------------------")
+print("-------------------------------------------")
 
 if status == cp_model.OPTIMAL:
     for u in employee_hours.keys():
