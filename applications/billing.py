@@ -222,10 +222,7 @@ df = pd.DataFrame(columns=project_cols, index=employee_cols)
 
 for employee, projects in vars.items():
     for project, weeks in projects.items():
-        for week, var in enumerate(weeks, start=1):
-            col = f'{project} (Week {project})'
-            df.loc[employee, project] = solver.Value(var) or 0
-            df.rename(columns={project: col}, inplace=True)
+        df.loc[employee, project] = sum(solver.Value(var) for var in weeks) or 0
     # print(df.loc[employee])
 
 print(df)
