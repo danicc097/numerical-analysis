@@ -110,8 +110,7 @@ def minimize_employee_reporting(
     print(f"Total billable project hours: {total_project_hours}")
 
     if total_employee_hours < total_project_hours:
-        print("Cannot have project billing hours higher than total employee billable hours")
-        exit(1)
+        raise Exception("Cannot have project billing hours higher than total employee billable hours")
     elif total_employee_hours > total_project_hours:
         print("####")
         print(
@@ -160,6 +159,7 @@ def minimize_employee_reporting(
         if employee_projects.get(e) is not None:
             allowed_projects = employee_projects[e]
 
+        # initialize decision variables
         for p in project_hours.keys():
             project_max_weekly_hours = max_weekly_hours
             if p not in allowed_projects:
@@ -190,7 +190,7 @@ def minimize_employee_reporting(
     flattened_spans = flatten(flatten(j) for i in spans.values() for j in i.values())
     model.Minimize(sum(flattened_spans))
     # TODO minimize number of different projects per user (addition with less weight than span)
-    # TODO restrict arbitrary users to allow reporting only to specific project(s)
+    # TODO precomputation to show meaningful error and exit early when restricting users to projects makes it infeasible
     # TODO more deterministic allocations, maybe with arbitrary weights for sorted employees
 
     solver = cp_model.CpSolver()
