@@ -146,20 +146,28 @@ def minimize_employee_reporting(
         def num_solutions(self):
             return self.__solution_count
 
-    vars: Vars = dict()
+    vars: Vars = {}
     spans: Spans = {}
 
     for e in employee_hours.keys():
         vars[e] = {}
         spans[e] = {}
 
-        # upper limit sum of employee hours in a month for all projects
-        model.Add(sum(sum(vars[e][p]) for p in project_hours.keys()) <= employee_hours[e])
+        # should create employees in employee_projects first, restricting to given projects, ie
+        # skipping var and span creation if p not in [...]
+        # then do the rest as is, but skipping if e in employee_projects.keys()
+        allowed_projects = list(project_hours.keys())
+        if employee_projects.get(e) is not None:
+            allowed_projects = employee_projects[e]
 
         for p in project_hours.keys():
+            project_max_weekly_hours = max_weekly_hours
+            if p not in allowed_projects:
+                project_max_weekly_hours = 0
+
             vars[e][p] = []
             for w in range(n_weeks):
-                vars[e][p].append(model.NewIntVar(0, max_weekly_hours, f"var_u_{e}_p_{p}_w_{w+1}"))
+                vars[e][p].append(model.NewIntVar(0, project_max_weekly_hours, f"var_u_{e}_p_{p}_w_{w+1}"))
 
             spans[e][p] = []
             for w in range(n_weeks):
@@ -171,6 +179,9 @@ def minimize_employee_reporting(
 
         for w in range(n_weeks):
             model.Add(sum(vars[e][p][w] for p in project_hours.keys()) <= max_weekly_hours)
+
+        # upper limit sum of employee hours in a month for all projects
+        model.Add(sum(sum(vars[e][p]) for p in project_hours.keys()) <= employee_hours[e])
 
     for p in project_hours.keys():
         # all project billing hours must be allocated in the end
@@ -255,11 +266,8 @@ if __name__ == "__main__":
         "Project 4": 10,
     }
     employee_hours: EmployeeHours = {"Martin": 160, "Jane": 160, "Bob": 150, "Alice": 10}
-    # should create employees in employee_projects first, restricting to given projects, ie
-    # skipping var and span creation if p not in [...]
-    # then do the rest as is, but skipping if e in employee_projects.keys()
     employee_projects: EmployeeProjects = {
-        "Martin": ["Project 1"],
+        "Martin": ["Project 1", "Project 2"],
         "Jane": ["Project 3"],
     }
     max_weekly_hours = 40
