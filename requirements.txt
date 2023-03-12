@@ -9,3 +9,4 @@ pytest
 openpyxl
 polars
 xlsxwriter
+pytest-repeat

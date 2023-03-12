@@ -146,7 +146,7 @@ def minimize_employee_reporting(
         def num_solutions(self):
             return self.__solution_count
 
-    vars: Vars = dict()
+    vars: Vars = {}
     spans: Spans = {}
 
     for e in employee_hours.keys():
