@@ -56,7 +56,8 @@ from xlsxwriter import Workbook
 
 from collections.abc import Iterable
 import pandas as pd
-import polars as pl
+
+# import polars as pl
 
 
 def flatten(xs):
@@ -163,7 +164,9 @@ def minimize_employee_reporting(
             return self.__solution_count
 
     vars: Vars = {}
+    # bool vars that indicate if an employee has allocated time to a project a given week
     spans: Spans = {}
+    # bool vars that indicate if an employee has allocated time to a project any week
     employee_project_counts: EmployeeProjectCounts = {}
 
     for e in employee_hours.keys():
@@ -171,9 +174,6 @@ def minimize_employee_reporting(
         spans[e] = {}
         employee_project_counts[e] = []
 
-        # should create employees in employee_projects first, restricting to given projects, ie
-        # skipping var and span creation if p not in [...]
-        # then do the rest as is, but skipping if e in employee_projects.keys()
         allowed_projects = list(project_hours.keys())
         if employee_projects.get(e) is not None:
             allowed_projects = employee_projects[e]
@@ -204,7 +204,7 @@ def minimize_employee_reporting(
         for w in range(n_weeks):
             model.Add(sum(vars[e][p][w] for p in project_hours.keys()) <= max_weekly_hours)
 
-        # upper limit sum of employee hours in a month for all projects
+        # an employee cannot allocate more hours than allowed
         model.Add(sum(sum(vars[e][p]) for p in project_hours.keys()) <= employee_hours[e])
 
     for p in project_hours.keys():
@@ -228,16 +228,12 @@ def minimize_employee_reporting(
 
     total_spans = round(solver.ObjectiveValue())
     total_employee_project_count = get_total_employee_project_count()
-    print(f"Minimum spans: {employee_hours}")
+    print(f"Spans (1st run): {total_spans}")
     print(f"Distinct projects/hour count (1st run): {total_employee_project_count}")
 
-    # TODO minimize number of different projects per user  (addition with less weight than span)
-    # see: https://stackoverflow.com/questions/65515182/are-multiple-objectives-possible-or-tools-constraint-programming
     model.AddHint(sum(flattened_spans), total_spans)  # faster solving with hint
     model.Add(sum(flattened_spans) <= total_spans)  # restrict to previous solution
-    model.Minimize(
-        sum(flatten(employee_project_counts.values()))
-    )  # --> new vars that are 1 if an employee has allocated to a project at all.
+    model.Minimize(sum(flatten(employee_project_counts.values())))
     solver = cp_model.CpSolver()
     status = solver.Solve(model, HourReportingPrinter())
 
@@ -254,7 +250,6 @@ def minimize_employee_reporting(
             print(f"\tAllocated hours: {month_accum}")
             print(f"\tUnallocated hours: {employee_hours[e] - month_accum}")
             print(f"\tTotal spans: {sum(solver.Value(span) for span in flatten_dict(spans[e]))}")
-            # ^ sum of spans[...]*vars[...]
             print("----")
         print(f"Total spans for all employees: {total_spans}")
         total_employee_project_count = get_total_employee_project_count()
