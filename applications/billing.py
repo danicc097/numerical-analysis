@@ -79,20 +79,32 @@ def flatten_dict(a):
     return lst
 
 
-Employee = str
-Project = str
+class Employee(str):
+    def __init__(self, string) -> None:
+        super().__init__()
+
+
+class Project(str):
+    def __init__(self, string) -> None:
+        super().__init__()
+
+
 Vars = Dict[Employee, Dict[Project, List[cp_model.IntVar]]]
 Spans = Dict[Employee, Dict[Project, List[cp_model.IntVar]]]
+EmployeeProjectCounts = Dict[Employee, List[cp_model.IntVar]]
 Results = Dict[Employee, Dict[Project, Any]]
 ProjectHours = Dict[Project, int]
 EmployeeHours = Dict[Employee, int]
 EmployeeProjects = Dict[Employee, List[Project]]
+
+EXCEL_SOLUTION_FILE = "billing.xlsx"
 
 
 @dataclasses.dataclass
 class EmployeeReporting:
     df: pd.DataFrame
     spans: int
+    employee_project_count: int
     unallocated_hours: Dict[Employee, int]
 
 
@@ -149,11 +161,12 @@ def minimize_employee_reporting(
 
     vars: Vars = {}
     spans: Spans = {}
-    employee_project_count = {}  # need another var that aggregates spans per user and minimizes those
+    employee_project_counts: EmployeeProjectCounts = {}
 
     for e in employee_hours.keys():
         vars[e] = {}
         spans[e] = {}
+        employee_project_counts[e] = []
 
         # should create employees in employee_projects first, restricting to given projects, ie
         # skipping var and span creation if p not in [...]
@@ -170,15 +183,20 @@ def minimize_employee_reporting(
 
             vars[e][p] = []
             for w in range(n_weeks):
-                vars[e][p].append(model.NewIntVar(0, project_max_weekly_hours, f"var_u_{e}_p_{p}_w_{w+1}"))
+                vars[e][p].append(model.NewIntVar(0, project_max_weekly_hours, f"var_e_{e}_p_{p}_w_{w+1}"))
 
             spans[e][p] = []
             for w in range(n_weeks):
                 # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn)
-                employee_span = model.NewBoolVar(f"span_u_{e}_p_{p}_w_{w+1}")
+                employee_span = model.NewBoolVar(f"span_e_{e}_p_{p}_w_{w+1}")
                 model.Add(vars[e][p][w] > 0).OnlyEnforceIf(employee_span)
                 model.Add(vars[e][p][w] == 0).OnlyEnforceIf(employee_span.Not())
                 spans[e][p].append(employee_span)
+
+            employee_project_count = model.NewBoolVar(f"employee_project_count_e_{e}_p_{p}")
+            model.Add(sum(vars[e][p]) > 0).OnlyEnforceIf(employee_project_count)
+            model.Add(sum(vars[e][p]) == 0).OnlyEnforceIf(employee_project_count.Not())
+            employee_project_counts[e].append(employee_project_count)
 
         for w in range(n_weeks):
             model.Add(sum(vars[e][p][w] for p in project_hours.keys()) <= max_weekly_hours)
@@ -206,15 +224,21 @@ def minimize_employee_reporting(
     print("-------------------------------------------")
 
     total_spans = round(solver.ObjectiveValue())
+    total_employee_project_count = sum(solver.Value(i) for i in flatten(employee_project_counts.values()))
+    print(f"Minimum spans: {employee_hours}")
+    print(
+        f"Distinct projects/hour count (1st run): {sum(solver.Value(i) for i in flatten(employee_project_counts.values()))}"
+    )
 
     # TODO minimize number of different projects per user  (addition with less weight than span)
     # see: https://stackoverflow.com/questions/65515182/are-multiple-objectives-possible-or-tools-constraint-programming
-    # ie minimize sum(1 for p in projects if p[w] > 0 for w in range(n_weeks)) for e in employee
-    # model.AddHint(sum(flattened_spans), total_spans) # faster solving with hint
-    # model.Add(sum(flattened_spans) <= total_spans) # restrict to previous solution
-    # model.Minimize(sum(employee_project_count))
-    # solver = cp_model.CpSolver()
-    # status = solver.Solve(model, HourReportingPrinter())
+    model.AddHint(sum(flattened_spans), total_spans)  # faster solving with hint
+    model.Add(sum(flattened_spans) <= total_spans)  # restrict to previous solution
+    model.Minimize(
+        sum(flatten(employee_project_counts.values()))
+    )  # --> new vars that are 1 if an employee has allocated to a project at all.
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model, HourReportingPrinter())
 
     if status == cp_model.OPTIMAL:
         for e in employee_hours.keys():
@@ -232,6 +256,7 @@ def minimize_employee_reporting(
             # ^ sum of spans[...]*vars[...]
             print("----")
         print(f"Total spans for all employees: {total_spans}")
+        print(f"Distinct projects/hour count (optimized): {total_employee_project_count}")
 
     elif status == cp_model.FEASIBLE:
         print("""Feasible solution found. TODO handle""")
@@ -255,29 +280,43 @@ def minimize_employee_reporting(
     [print("{:<25} {:<10}".format(e, f"{h}h")) for e, h in unallocated_hours.items()]
 
     if save_excel:
-        xls = "billing.xlsx"
-        print(f"\nSaving results to {xls}...")
-        df.to_excel(xls)
+        print(f"\nSaving results to {EXCEL_SOLUTION_FILE}...")
+        df.to_excel(EXCEL_SOLUTION_FILE)
 
     return EmployeeReporting(
         df=df,
         spans=total_spans,
         unallocated_hours=unallocated_hours,
+        employee_project_count=total_employee_project_count,
     )
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Employee time reporting optimizer")
+    parser.add_argument(
+        "-e", "--export", action=argparse.BooleanOptionalAction, help=f"Exports solution to {EXCEL_SOLUTION_FILE}"
+    )
+
+    args = parser.parse_args()
+
     n_weeks = 4
-    project_hours: ProjectHours = {
-        "Project 1": 140,
-        "Project 2": 20,
-        "Project 3": 300,
-        "Project 4": 10,
+    project_hours = {
+        Project("Project 1"): 140,
+        Project("Project 2"): 20,
+        Project("Project 3"): 300,
+        Project("Project 4"): 10,
     }
-    employee_hours: EmployeeHours = {"Martin": 160, "Jane": 160, "Bob": 150, "Alice": 10}
-    employee_projects: EmployeeProjects = {
-        "Martin": ["Project 1", "Project 2"],
-        "Jane": ["Project 3"],
+    employee_hours = {
+        Employee("Martin"): 160,
+        Employee("Jane"): 160,
+        Employee("Bob"): 150,
+        Employee("Alice"): 10,
+    }
+    employee_projects = {
+        Employee("Martin"): [Project("Project 1"), Project("Project 2")],
+        Employee("Jane"): [Project("Project 3")],
     }
     max_weekly_hours = 40
 
@@ -287,7 +326,7 @@ if __name__ == "__main__":
         employee_projects=employee_projects,
         max_weekly_hours=max_weekly_hours,
         n_weeks=n_weeks,
-        # save_excel=True,
+        save_excel=args.export,
     )
 
     project_cols = project_hours.keys()

@@ -19,9 +19,31 @@ class BillingParams:
 
 
 class TestBilling:
+    n_weeks = 4
+    max_weekly_hours = 40
+
     @pytest.mark.parametrize(
         "p",
         [
+            # TODO test optimizing projects per employee check with/without
+            BillingParams(
+                project_hours={
+                    "Project 1": max_weekly_hours * n_weeks,
+                    "Project 2": max_weekly_hours * n_weeks,
+                    "Project 3": max_weekly_hours * n_weeks,
+                    "Project 4": max_weekly_hours * n_weeks,
+                },
+                employee_hours={
+                    "Martin": max_weekly_hours * n_weeks,
+                    "Jane": max_weekly_hours * n_weeks,
+                    "Bob": max_weekly_hours * n_weeks,
+                    "Alice": max_weekly_hours * n_weeks,
+                },
+                employee_projects={},
+                expected_raises=nullcontext(),
+                spans=n_weeks * 4,
+                unallocated_hours=0,
+            ),
             BillingParams(
                 project_hours={
                     "Project 1": 140,
@@ -88,16 +110,13 @@ class TestBilling:
         self,
         p: BillingParams,
     ):
-        n_weeks = 4
-        max_weekly_hours = 40
-
         with p.expected_raises:
             employee_reporting = minimize_employee_reporting(
                 employee_hours=p.employee_hours,
                 project_hours=p.project_hours,
                 employee_projects=p.employee_projects,
-                n_weeks=n_weeks,
-                max_weekly_hours=max_weekly_hours,
+                n_weeks=self.n_weeks,
+                max_weekly_hours=self.max_weekly_hours,
             )
 
             res_employee_hours = employee_reporting.df.sum(0).sum()
