@@ -96,6 +96,8 @@ class EmployeeReporting:
     unallocated_hours: Dict[Employee, int]
 
 
+# TODO precomputation to show meaningful error and exit early when restricting users to projects makes it infeasible
+# TODO more deterministic allocations, maybe with arbitrary weights for sorted employees
 def minimize_employee_reporting(
     n_weeks=4,
     project_hours: ProjectHours = {},
@@ -147,6 +149,7 @@ def minimize_employee_reporting(
 
     vars: Vars = {}
     spans: Spans = {}
+    employee_project_count = {}  # need another var that aggregates spans per user and minimizes those
 
     for e in employee_hours.keys():
         vars[e] = {}
@@ -189,9 +192,6 @@ def minimize_employee_reporting(
 
     flattened_spans = flatten(flatten(j) for i in spans.values() for j in i.values())
     model.Minimize(sum(flattened_spans))
-    # TODO minimize number of different projects per user (addition with less weight than span)
-    # TODO precomputation to show meaningful error and exit early when restricting users to projects makes it infeasible
-    # TODO more deterministic allocations, maybe with arbitrary weights for sorted employees
 
     solver = cp_model.CpSolver()
     status = solver.Solve(model, HourReportingPrinter())
@@ -205,7 +205,16 @@ def minimize_employee_reporting(
     print(f"Employee hours: {employee_hours}")
     print("-------------------------------------------")
 
-    total_spans = int(solver.ObjectiveValue())
+    total_spans = round(solver.ObjectiveValue())
+
+    # TODO minimize number of different projects per user  (addition with less weight than span)
+    # see: https://stackoverflow.com/questions/65515182/are-multiple-objectives-possible-or-tools-constraint-programming
+    # ie minimize sum(1 for p in projects if p[w] > 0 for w in range(n_weeks)) for e in employee
+    # model.AddHint(sum(flattened_spans), total_spans) # faster solving with hint
+    # model.Add(sum(flattened_spans) <= total_spans) # restrict to previous solution
+    # model.Minimize(sum(employee_project_count))
+    # solver = cp_model.CpSolver()
+    # status = solver.Solve(model, HourReportingPrinter())
 
     if status == cp_model.OPTIMAL:
         for e in employee_hours.keys():
@@ -219,7 +228,7 @@ def minimize_employee_reporting(
             print("")
             print(f"\tAllocated hours: {month_accum}")
             print(f"\tUnallocated hours: {employee_hours[e] - month_accum}")
-            print(f"\tTotal spans: {sum(solver.Value(span) for span in flatten_dict(spans))}")
+            print(f"\tTotal spans: {sum(solver.Value(span) for span in flatten_dict(spans[e]))}")
             # ^ sum of spans[...]*vars[...]
             print("----")
         print(f"Total spans for all employees: {total_spans}")
