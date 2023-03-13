@@ -118,6 +118,9 @@ def minimize_employee_reporting(
     max_weekly_hours=40,
     save_excel=False,
 ) -> EmployeeReporting:
+    def get_total_employee_project_count():
+        return sum(solver.Value(i) for i in flatten(employee_project_counts.values()))
+
     total_employee_hours = sum(employee_hours.values())
     total_project_hours = sum(project_hours.values())
     print(f"Total employee hours: {total_employee_hours}")
@@ -224,11 +227,9 @@ def minimize_employee_reporting(
     print("-------------------------------------------")
 
     total_spans = round(solver.ObjectiveValue())
-    total_employee_project_count = sum(solver.Value(i) for i in flatten(employee_project_counts.values()))
+    total_employee_project_count = get_total_employee_project_count()
     print(f"Minimum spans: {employee_hours}")
-    print(
-        f"Distinct projects/hour count (1st run): {sum(solver.Value(i) for i in flatten(employee_project_counts.values()))}"
-    )
+    print(f"Distinct projects/hour count (1st run): {total_employee_project_count}")
 
     # TODO minimize number of different projects per user  (addition with less weight than span)
     # see: https://stackoverflow.com/questions/65515182/are-multiple-objectives-possible-or-tools-constraint-programming
@@ -256,6 +257,7 @@ def minimize_employee_reporting(
             # ^ sum of spans[...]*vars[...]
             print("----")
         print(f"Total spans for all employees: {total_spans}")
+        total_employee_project_count = get_total_employee_project_count()
         print(f"Distinct projects/hour count (optimized): {total_employee_project_count}")
 
     elif status == cp_model.FEASIBLE:
@@ -276,8 +278,9 @@ def minimize_employee_reporting(
             unallocated_hours[e] = e_unallocated_hours
     df = pd.DataFrame(results)
 
-    print("\nUnallocated employee billable hours:")
-    [print("{:<25} {:<10}".format(e, f"{h}h")) for e, h in unallocated_hours.items()]
+    if len(unallocated_hours) > 0:
+        print("\nUnallocated employee billable hours:")
+        [print("{:<25} {:<10}".format(e, f"{h}h")) for e, h in unallocated_hours.items()]
 
     if save_excel:
         print(f"\nSaving results to {EXCEL_SOLUTION_FILE}...")
@@ -303,16 +306,16 @@ if __name__ == "__main__":
 
     n_weeks = 4
     project_hours = {
-        Project("Project 1"): 140,
-        Project("Project 2"): 20,
-        Project("Project 3"): 300,
-        Project("Project 4"): 10,
+        Project("Project 1"): 160,
+        Project("Project 2"): 160,
+        Project("Project 3"): 160,
+        Project("Project 4"): 160,
     }
     employee_hours = {
         Employee("Martin"): 160,
         Employee("Jane"): 160,
-        Employee("Bob"): 150,
-        Employee("Alice"): 10,
+        Employee("Bob"): 160,
+        Employee("Alice"): 160,
     }
     employee_projects = {
         Employee("Martin"): [Project("Project 1"), Project("Project 2")],

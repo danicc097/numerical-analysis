@@ -1,21 +1,23 @@
 import dataclasses
 from typing import ContextManager
 import pytest
-from billing import EmployeeHours, EmployeeProjects, ProjectHours, minimize_employee_reporting
+from billing import Employee, EmployeeHours, EmployeeProjects, Project, ProjectHours, minimize_employee_reporting
 from contextlib import nullcontext
 
 
 @dataclasses.dataclass(frozen=True)
-class BillingParams:
+class BillingTestCase:
+    name: str
     project_hours: ProjectHours
     employee_hours: EmployeeHours
     employee_projects: EmployeeProjects
     expected_raises: ContextManager
     unallocated_hours: int
     spans: int
+    employee_project_count: int | None
 
     def pytest_id(self):
-        return repr(self)  # usually something custom
+        return f"BillingTestCase({self.name})"  # usually something custom
 
 
 class TestBilling:
@@ -25,90 +27,99 @@ class TestBilling:
     @pytest.mark.parametrize(
         "p",
         [
-            # TODO test optimizing projects per employee check with/without
-            BillingParams(
+            BillingTestCase(
+                name="minimize number of projects a user allocates to in a month",
                 project_hours={
-                    "Project 1": max_weekly_hours * n_weeks,
-                    "Project 2": max_weekly_hours * n_weeks,
-                    "Project 3": max_weekly_hours * n_weeks,
-                    "Project 4": max_weekly_hours * n_weeks,
+                    Project("Project 1"): max_weekly_hours * n_weeks,
+                    Project("Project 2"): max_weekly_hours * n_weeks,
+                    Project("Project 3"): max_weekly_hours * n_weeks,
+                    Project("Project 4"): max_weekly_hours * n_weeks,
                 },
                 employee_hours={
-                    "Martin": max_weekly_hours * n_weeks,
-                    "Jane": max_weekly_hours * n_weeks,
-                    "Bob": max_weekly_hours * n_weeks,
-                    "Alice": max_weekly_hours * n_weeks,
+                    Employee("Martin"): max_weekly_hours * n_weeks,
+                    Employee("Jane"): max_weekly_hours * n_weeks,
+                    Employee("Bob"): max_weekly_hours * n_weeks,
+                    Employee("Alice"): max_weekly_hours * n_weeks,
                 },
                 employee_projects={},
                 expected_raises=nullcontext(),
                 spans=n_weeks * 4,
                 unallocated_hours=0,
+                employee_project_count=4,
             ),
-            BillingParams(
+            BillingTestCase(
+                name="reporting with excess employee hours",
                 project_hours={
-                    "Project 1": 140,
-                    "Project 2": 20,
-                    "Project 3": 300,
-                    "Project 4": 10,
+                    Project("Project 1"): 140,
+                    Project("Project 2"): 20,
+                    Project("Project 3"): 300,
+                    Project("Project 4"): 10,
                 },
                 employee_hours={
-                    "Martin": 160,
-                    "Jane": 160,
-                    "Bob": 150,
-                    "Alice": 10,
+                    Employee("Martin"): 160,
+                    Employee("Jane"): 160,
+                    Employee("Bob"): 150,
+                    Employee("Alice"): 10,
                 },
                 employee_projects={},
                 expected_raises=nullcontext(),
                 spans=14,
                 unallocated_hours=10,
+                employee_project_count=None,
             ),
-            BillingParams(
+            BillingTestCase(
+                name="reporting with employee project restrictions",
                 project_hours={
-                    "Project 1": 140,
-                    "Project 2": 20,
-                    "Project 3": 300,
-                    "Project 4": 10,
+                    Project("Project 1"): 140,
+                    Project("Project 2"): 20,
+                    Project("Project 3"): 300,
+                    Project("Project 4"): 10,
                 },
                 employee_hours={
-                    "Martin": 160,
-                    "Jane": 160,
-                    "Bob": 150,
-                    "Alice": 10,
+                    Employee("Martin"): 160,
+                    Employee("Jane"): 160,
+                    Employee("Bob"): 150,
+                    Employee("Alice"): 10,
                 },
                 employee_projects={
-                    "Martin": ["Project 1", "Project 2"],
-                    "Jane": ["Project 3"],
+                    Employee("Martin"): [Project("Project 1"), Project("Project 2")],
+                    Employee("Jane"): [Project("Project 3")],
                 },
                 expected_raises=nullcontext(),
                 spans=14,
                 unallocated_hours=10,
+                employee_project_count=None,
             ),
-            BillingParams(
+            BillingTestCase(
+                name="infeasible assignment due to employee project restrictions",
                 project_hours={
-                    "Project 1": 140,
-                    "Project 2": 20,
-                    "Project 3": 300,
-                    "Project 4": 10,
+                    Project("Project 1"): 140,
+                    Project("Project 2"): 20,
+                    Project("Project 3"): 300,
+                    Project("Project 4"): 10,
                 },
                 employee_hours={
-                    "Martin": 160,
-                    "Jane": 160,
-                    "Bob": 150,
-                    "Alice": 10,
+                    Employee("Martin"): 160,
+                    Employee("Jane"): 160,
+                    Employee("Bob"): 150,
+                    Employee("Alice"): 10,
                 },
                 employee_projects={
-                    "Martin": ["Project 1"],  # needs 10 more hours from employees by restricting only to P1
-                    "Jane": ["Project 3"],
+                    Employee("Martin"): [
+                        Project("Project 1")
+                    ],  # needs 10 more hours from employees by restricting only to P1
+                    Employee("Jane"): [Project("Project 3")],
                 },
                 expected_raises=pytest.raises(Exception),
                 spans=0,
                 unallocated_hours=0,
+                employee_project_count=None,
             ),
         ],
     )
     def test_allow_employee_reporting_with_project_restriction(
         self,
-        p: BillingParams,
+        p: BillingTestCase,
     ):
         with p.expected_raises:
             employee_reporting = minimize_employee_reporting(
@@ -129,3 +140,8 @@ class TestBilling:
 
             assert employee_reporting.spans == p.spans
             assert sum(employee_reporting.unallocated_hours.values()) == p.unallocated_hours
+
+            if p.employee_project_count is not None:
+                assert (
+                    employee_reporting.employee_project_count == p.employee_project_count
+                )  # projects per user are minimized in subsequent optimization run
