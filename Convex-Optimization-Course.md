@@ -39,6 +39,15 @@ squares of an affine function of $x$, i.e. $f(x) = ax+b$? Then yes, else no...
 
 ### Convex optimization
 
+The workflow is to try to formulate the problem as convex. Convex optimization
+solutions, unlike any other ((meta)heuristics, deep learning, etc.) have a
+provably optimal solution.
+
+Tricks used:
+ - Changing variables
+ - Approximating true objectives or/and constraints
+ - **Relaxation** - i.e. ignoring terms or constraints we cannot handle
+
 $$
 \begin{gathered}
 \text{minimize} \space f_0(x)

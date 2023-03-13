@@ -93,7 +93,7 @@ class Project(str):
 Vars = Dict[Employee, Dict[Project, List[cp_model.IntVar]]]
 Spans = Dict[Employee, Dict[Project, List[cp_model.IntVar]]]
 EmployeeProjectCounts = Dict[Employee, List[cp_model.IntVar]]
-Results = Dict[Employee, Dict[Project, Any]]
+Results = Dict[Employee, Dict[Project, int]]
 ProjectHours = Dict[Project, int]
 EmployeeHours = Dict[Employee, int]
 EmployeeProjects = Dict[Employee, List[Project]]
@@ -122,6 +122,8 @@ def minimize_employee_reporting(
     def get_total_employee_project_count():
         return sum(solver.Value(i) for i in flatten(employee_project_counts.values()))
 
+    projects = list(project_hours.keys())
+    employees = list(employee_hours.keys())
     total_employee_hours = sum(employee_hours.values())
     total_project_hours = sum(project_hours.values())
     print(f"Total employee hours: {total_employee_hours}")
@@ -169,17 +171,17 @@ def minimize_employee_reporting(
     # bool vars that indicate if an employee has allocated time to a project any week
     employee_project_counts: EmployeeProjectCounts = {}
 
-    for e in employee_hours.keys():
+    for e in employees:
         vars[e] = {}
         spans[e] = {}
         employee_project_counts[e] = []
 
-        allowed_projects = list(project_hours.keys())
+        allowed_projects = projects
         if employee_projects.get(e) is not None:
             allowed_projects = employee_projects[e]
 
         # initialize decision variables
-        for p in project_hours.keys():
+        for p in projects:
             project_max_weekly_hours = max_weekly_hours
             if p not in allowed_projects:
                 project_max_weekly_hours = 0
@@ -202,14 +204,14 @@ def minimize_employee_reporting(
             employee_project_counts[e].append(employee_project_count)
 
         for w in range(n_weeks):
-            model.Add(sum(vars[e][p][w] for p in project_hours.keys()) <= max_weekly_hours)
+            model.Add(sum(vars[e][p][w] for p in projects) <= max_weekly_hours)
 
         # an employee cannot allocate more hours than allowed
-        model.Add(sum(sum(vars[e][p]) for p in project_hours.keys()) <= employee_hours[e])
+        model.Add(sum(sum(vars[e][p]) for p in projects) <= employee_hours[e])
 
-    for p in project_hours.keys():
+    for p in projects:
         # all project billing hours must be allocated in the end
-        model.Add(sum(sum(vars[e][p]) for e in employee_hours.keys()) == project_hours[p])
+        model.Add(sum(sum(vars[e][p]) for e in employees) == project_hours[p])
 
     flattened_spans = flatten(flatten(j) for i in spans.values() for j in i.values())
     model.Minimize(sum(flattened_spans))
@@ -238,11 +240,11 @@ def minimize_employee_reporting(
     status = solver.Solve(model, HourReportingPrinter())
 
     if status == cp_model.OPTIMAL:
-        for e in employee_hours.keys():
+        for e in employees:
             print(f"Employee {e}:")
             month_accum = 0
             for w in range(n_weeks):
-                for p in project_hours.keys():
+                for p in projects:
                     hours = solver.Value(vars[e][p][w])
                     month_accum += hours
                     print(f"\tWeek {w+1}: {hours:<3}h on project {p:<20} Span bool={solver.Value(spans[e][p][w])}")
@@ -263,11 +265,15 @@ def minimize_employee_reporting(
     print("  - branches  : %i" % solver.NumBranches())
     print("  - wall time : %f s" % solver.WallTime())
 
-    results: Results = copy.deepcopy(vars)
-    unallocated_hours = dict()
-    for e, _projects in results.items():
+    unallocated_hours = {}
+
+    results: Results = {}
+    for e in employees:
+        results[e] = {}
+
+    for e, _projects in vars.items():
         for p in _projects.keys():
-            results[e][p] = sum(solver.Value(results[e][p][w]) for w in range(n_weeks))
+            results[e][p] = sum(solver.Value(vars[e][p][w]) for w in range(n_weeks))
         e_unallocated_hours = abs(sum(monthly_hours for monthly_hours in results[e].values()) - employee_hours[e])
         if e_unallocated_hours > 0:
             unallocated_hours[e] = e_unallocated_hours
@@ -327,14 +333,11 @@ if __name__ == "__main__":
         save_excel=args.export,
     )
 
-    project_cols = project_hours.keys()
-    employee_rows = employee_hours.keys()
-
     # employee_hours_df = employee_reporting.df.sum(0)
     # projects_hours_df = employee_reporting.df.sum(1)
-    # for project in project_cols:
+    # for project in projects:
     #     print(f"{project}: {projects_hours_df.loc[project]}")
-    # for employee in employee_rows:
+    # for employee in employees:
     #     print(f"{employee}: {employee_hours_df.loc[employee]}")
 
     # polars
