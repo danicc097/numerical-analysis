@@ -109,8 +109,10 @@ class EmployeeReporting:
     unallocated_hours: Dict[Employee, int]
 
 
-# TODO precomputation to show meaningful error and exit early when restricting users to projects makes it infeasible
+# precomputation to show meaningful error and exit early when restricting users to projects makes it infeasible
+#     \__ too complex
 # TODO more deterministic allocations, maybe with arbitrary weights for sorted employees
+# TODO restrict results from existing billing.xlsx input file
 def minimize_employee_reporting(
     n_weeks=4,
     project_hours: ProjectHours = {},
@@ -160,7 +162,7 @@ def minimize_employee_reporting(
             )
             self.__solution_count += 1
 
-        # show useful info...
+            # show useful info...
 
         def num_solutions(self):
             return self.__solution_count
