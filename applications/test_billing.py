@@ -117,7 +117,7 @@ class TestBilling:
             ),
         ],
     )
-    def test_allow_employee_reporting_with_project_restriction(
+    def test_allow_employee_reporting(
         self,
         p: BillingTestCase,
     ):
@@ -135,9 +135,7 @@ class TestBilling:
 
             assert res_employee_hours <= sum(h for h in p.employee_hours.values())
             assert res_employee_hours == sum(h for h in p.project_hours.values())
-
             assert res_project_hours == sum(h for h in p.project_hours.values())
-
             assert employee_reporting.spans == p.spans
             assert sum(employee_reporting.unallocated_hours.values()) == p.unallocated_hours
 

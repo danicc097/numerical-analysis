@@ -16,6 +16,7 @@ Inputs:
 Constraints:
   - 8 hours/day for reporting application
   - 40 hour/week maximum span of reported project hours.
+  - Some employees can report only to a specific set of projects.
 
 
 The objective is to minimize total created spans by all employees.
