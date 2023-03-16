@@ -10,3 +10,4 @@ openpyxl
 polars
 xlsxwriter
 pytest-repeat
+manim
