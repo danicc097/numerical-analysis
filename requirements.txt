@@ -11,3 +11,8 @@ polars
 xlsxwriter
 pytest-repeat
 manim
+ipympl
+mayavi
+sympy
+ipywidgets
+ipyevents
