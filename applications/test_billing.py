@@ -1,5 +1,5 @@
 import dataclasses
-from typing import ContextManager
+from typing import ContextManager, Dict, List
 import pytest
 from billing import Employee, EmployeeHours, EmployeeProjects, Project, ProjectHours, minimize_employee_reporting
 from contextlib import nullcontext
@@ -12,9 +12,10 @@ class BillingTestCase:
     employee_hours: EmployeeHours
     employee_projects: EmployeeProjects
     expected_raises: ContextManager
-    unallocated_hours: int
-    spans: int
-    employee_project_count: int | None
+    expected_unallocated_hours: int
+    weekly_hours_constraints: Dict[Employee, List[int]]
+    expected_spans: int
+    expected_employee_project_count: int | None
 
     def pytest_id(self):
         return f"BillingTestCase({self.name})"  # usually something custom
@@ -27,6 +28,7 @@ class TestBilling:
     @pytest.mark.parametrize(
         "p",
         [
+
             BillingTestCase(
                 name="minimize number of projects a user allocates to in a month",
                 project_hours={
@@ -43,9 +45,10 @@ class TestBilling:
                 },
                 employee_projects={},
                 expected_raises=nullcontext(),
-                spans=n_weeks * 4,
-                unallocated_hours=0,
-                employee_project_count=4,
+                expected_spans=n_weeks * 4,
+                expected_unallocated_hours=0,
+                expected_employee_project_count=4,
+                weekly_hours_constraints=None
             ),
             BillingTestCase(
                 name="reporting with excess employee hours",
@@ -63,9 +66,10 @@ class TestBilling:
                 },
                 employee_projects={},
                 expected_raises=nullcontext(),
-                spans=14,
-                unallocated_hours=10,
-                employee_project_count=None,
+                expected_spans=14,
+                expected_unallocated_hours=10,
+                expected_employee_project_count=None,
+                weekly_hours_constraints=None
             ),
             BillingTestCase(
                 name="reporting with employee project restrictions",
@@ -86,9 +90,10 @@ class TestBilling:
                     Employee("Jane"): [Project("Project 3")],
                 },
                 expected_raises=nullcontext(),
-                spans=14,
-                unallocated_hours=10,
-                employee_project_count=None,
+                expected_spans=14,
+                expected_unallocated_hours=10,
+                expected_employee_project_count=None,
+                weekly_hours_constraints=None
             ),
             BillingTestCase(
                 name="infeasible assignment due to employee project restrictions",
@@ -111,9 +116,33 @@ class TestBilling:
                     Employee("Jane"): [Project("Project 3")],
                 },
                 expected_raises=pytest.raises(Exception),
-                spans=0,
-                unallocated_hours=0,
-                employee_project_count=None,
+                expected_spans=0,
+                expected_unallocated_hours=0,
+                expected_employee_project_count=None,
+                weekly_hours_constraints=None
+            ),
+            BillingTestCase(
+                name="reporting with weekly hours constraints",
+                project_hours={
+                    Project("Project 1"): 140,
+                    Project("Project 2"): 20,
+                    Project("Project 3"): 300,
+                    Project("Project 4"): 10,
+                },
+                employee_hours={
+                    Employee("Martin"): 160,
+                    Employee("Jane"): 160,
+                    Employee("Bob"): 150,
+                    Employee("Alice"): 10,
+                },
+                employee_projects={},
+                expected_raises=nullcontext(),
+                expected_spans=15, # 14 + 1 extra from alice weekly hour constraints
+                expected_unallocated_hours=10,
+                expected_employee_project_count=None,
+                weekly_hours_constraints={
+                    Employee("Alice"): [5, 5, 0, 0],
+                },
             ),
         ],
     )
@@ -128,6 +157,7 @@ class TestBilling:
                 employee_projects=p.employee_projects,
                 n_weeks=self.n_weeks,
                 max_weekly_hours=self.max_weekly_hours,
+                weekly_hours_constraints=p.weekly_hours_constraints,
             )
 
             res_employee_hours = employee_reporting.df.sum(0).sum()
@@ -136,10 +166,10 @@ class TestBilling:
             assert res_employee_hours <= sum(h for h in p.employee_hours.values())
             assert res_employee_hours == sum(h for h in p.project_hours.values())
             assert res_project_hours == sum(h for h in p.project_hours.values())
-            assert employee_reporting.spans == p.spans
-            assert sum(employee_reporting.unallocated_hours.values()) == p.unallocated_hours
+            assert employee_reporting.spans == p.expected_spans
+            assert sum(employee_reporting.unallocated_hours.values()) == p.expected_unallocated_hours
 
-            if p.employee_project_count is not None:
+            if p.expected_employee_project_count is not None:
                 assert (
-                    employee_reporting.employee_project_count == p.employee_project_count
+                    employee_reporting.employee_project_count == p.expected_employee_project_count
                 )  # projects per user are minimized in subsequent optimization run
