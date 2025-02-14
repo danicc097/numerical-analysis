@@ -44,7 +44,6 @@ Example:
 
 """
 
-
 import copy
 import dataclasses
 import itertools
@@ -134,7 +133,9 @@ def minimize_employee_reporting(
     print(f"Total billable project hours: {total_project_hours}")
 
     if total_employee_hours < total_project_hours:
-        raise Exception("Cannot have project billing hours higher than total employee billable hours")
+        raise Exception(
+            "Cannot have project billing hours higher than total employee billable hours"
+        )
     elif total_employee_hours > total_project_hours:
         print("####")
         print(
@@ -191,24 +192,33 @@ def minimize_employee_reporting(
 
             vars[e][p] = []
             for w in range(n_weeks):
-                vars[e][p].append(model.NewIntVar(0, project_max_weekly_hours, f"var_e_{e}_p_{p}_w_{w+1}"))
+                vars[e][p].append(
+                    model.NewIntVar(
+                        0, project_max_weekly_hours, f"var_e_{e}_p_{p}_w_{w + 1}"
+                    )
+                )
 
             spans[e][p] = []
             for w in range(n_weeks):
                 # do not use multiplication, extremely slow (https://stackoverflow.com/questions/71961919/ortools-cp-sat-solver-constraint-to-require-two-lists-of-variables-to-be-drawn)
-                employee_span = model.NewBoolVar(f"span_e_{e}_p_{p}_w_{w+1}")
+                employee_span = model.NewBoolVar(f"span_e_{e}_p_{p}_w_{w + 1}")
                 model.Add(vars[e][p][w] > 0).OnlyEnforceIf(employee_span)
                 model.Add(vars[e][p][w] == 0).OnlyEnforceIf(employee_span.Not())
                 spans[e][p].append(employee_span)
 
-            employee_project_count = model.NewBoolVar(f"employee_project_count_e_{e}_p_{p}")
+            employee_project_count = model.NewBoolVar(
+                f"employee_project_count_e_{e}_p_{p}"
+            )
             model.Add(sum(vars[e][p]) > 0).OnlyEnforceIf(employee_project_count)
             model.Add(sum(vars[e][p]) == 0).OnlyEnforceIf(employee_project_count.Not())
             employee_project_counts[e].append(employee_project_count)
 
         for w in range(n_weeks):
             if weekly_hours_constraints and e in weekly_hours_constraints:
-                model.Add(sum(vars[e][p][w] for p in projects) == weekly_hours_constraints[e][w])
+                model.Add(
+                    sum(vars[e][p][w] for p in projects)
+                    == weekly_hours_constraints[e][w]
+                )
             else:
                 model.Add(sum(vars[e][p][w] for p in projects) <= max_weekly_hours)
 
@@ -254,15 +264,19 @@ def minimize_employee_reporting(
                     hours = solver.Value(vars[e][p][w])
                     month_accum += hours
                     if hours > 0:
-                        print(f"\tWeek {w+1}: {hours:<3}h on project {p:<20}")
+                        print(f"\tWeek {w + 1}: {hours:<3}h on project {p:<20}")
             print("")
             print(f"\tAllocated hours: {month_accum}")
             print(f"\tUnallocated hours: {employee_hours[e] - month_accum}")
-            print(f"\tTotal spans: {sum(solver.Value(span) for span in flatten_dict(spans[e]))}")
+            print(
+                f"\tTotal spans: {sum(solver.Value(span) for span in flatten_dict(spans[e]))}"
+            )
             print("----")
         print(f"Total spans for all employees: {total_spans}")
         total_employee_project_count = get_total_employee_project_count()
-        print(f"Distinct projects/hour count (optimized): {total_employee_project_count}")
+        print(
+            f"Distinct projects/hour count (optimized): {total_employee_project_count}"
+        )
 
     elif status == cp_model.FEASIBLE:
         print("""Feasible solution found. TODO handle""")
@@ -281,14 +295,20 @@ def minimize_employee_reporting(
     for e, _projects in vars.items():
         for p in _projects.keys():
             results[e][p] = sum(solver.Value(vars[e][p][w]) for w in range(n_weeks))
-        e_unallocated_hours = abs(sum(monthly_hours for monthly_hours in results[e].values()) - employee_hours[e])
+        e_unallocated_hours = abs(
+            sum(monthly_hours for monthly_hours in results[e].values())
+            - employee_hours[e]
+        )
         if e_unallocated_hours > 0:
             unallocated_hours[e] = e_unallocated_hours
     df = pd.DataFrame(results)
 
     if len(unallocated_hours) > 0:
         print("\nUnallocated employee billable hours:")
-        [print("{:<25} {:<10}".format(e, f"{h}h")) for e, h in unallocated_hours.items()]
+        [
+            print("{:<25} {:<10}".format(e, f"{h}h"))
+            for e, h in unallocated_hours.items()
+        ]
 
     if save_excel:
         print(f"\nSaving results to {EXCEL_SOLUTION_FILE}...")
@@ -301,12 +321,16 @@ def minimize_employee_reporting(
         employee_project_count=total_employee_project_count,
     )
 
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Employee time reporting optimizer")
     parser.add_argument(
-        "-e", "--export", action=argparse.BooleanOptionalAction, help=f"Exports solution to {EXCEL_SOLUTION_FILE}"
+        "-e",
+        "--export",
+        action=argparse.BooleanOptionalAction,
+        help=f"Exports solution to {EXCEL_SOLUTION_FILE}",
     )
 
     args = parser.parse_args()
@@ -314,19 +338,24 @@ if __name__ == "__main__":
     week_hours = [16, 32, 40, 40, 40]
     monthly_hours = sum(week_hours)
     assert monthly_hours == 168
+
     project_hours = {
-        Project('101057057'): 20,
-        Project('850008298'): 30,
-        Project('850008327'): 10,
-        Project('101149874'): 30,
-        Project('100988433'): 78,
+        Project("PYLON  850008181  N74"): 30,
+        Project("NCF DR  850008304  N74"): 0,
+        Project("FAF DR  850008143  N75"): 0,
+        Project("FAF MR  101079051  VSC"): 0,
+        Project("HL  850008298  N75"): 20,
+        Project("WING  850008135"): 0,
+        Project("RFE DR (VTP)  850008327  N75"): 10,
+        Project("RFE MR  101057056  N75"): 0,
+        Project("RFE MR  101057056  N75"): 0,
     }
 
     employee_hours = {
         Employee("Daniel"): monthly_hours,
     }
     employee_projects = {
-        Employee("Daniel"): [Project("101057057"), Project("850008298"), Project("850008327"), Project("101149874"), Project("100988433")],
+        Employee("Daniel"): [k for k in project_hours.keys()],
     }
     max_weekly_hours = 40
 
@@ -339,9 +368,8 @@ if __name__ == "__main__":
         save_excel=args.export,
         weekly_hours_constraints={
             Employee("Daniel"): week_hours,
-        }
+        },
     )
-
 
     # employee_hours_df = employee_reporting.df.sum(0)
     # projects_hours_df = employee_reporting.df.sum(1)
